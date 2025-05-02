@@ -1,119 +1,51 @@
 ---
-- hosts: all
-  become: true
-
-## SECCION 1: instalamos paqueteria basica
-
-- name: Instalamos todas las dependencias de DVWA
+- name: Configurar servidor con Nginx, Prometheus y Grafana
   hosts: all
   become: true
   tasks:
-    - apt: 
-        name:
-          - apache2
-          - git
-          - libapache2-mod-php
-          - php
-          - php-bcmath
-          - php-mysqli
-          - php-gd
-          - php-curl
-          - php-imagick
-          - php-intl
-          - php-json
-          - php-mbstring
-          - php-mysql
-          - php-xml
-          - php-zip
-          - mariadb-server
-          - curl
-          - python-pymysql
-          - python3-mysqldb
-        state: present 
+    - name: Instalar Nginx
+      apt:
+        name: nginx
+        state: present
         update_cache: yes
 
-## SECCION 2: Clonamos el GIT y configuramos el DVWA
+    - name: Instalar dependencias para Prometheus y Grafana
+      apt:
+        name:
+          - wget
+          - curl
+          - gnupg2
+          - software-properties-common
+        state: present
+        update_cache: yes
 
-- name: Descargamos via GIT dvwa
-  hosts: all
-  become: true
-  tasks:
-    - git:
-        repo: https://github.com/ethicalhack3r/DVWA.git
-        dest: /var/www/html/DVWA
-        clone: yes
-        update: yes
-        force: yes
-        version: master
+    - name: Añadir repositorio de Prometheus (si es necesario)
+      # Aquí puedes definir instalación personalizada, descarga de binarios, etc.
 
-  # Cambiamos los permisos de algunos directorios
-- name: Modificamos permisos - uploads - IDS y config
-  hosts: all
-  become: true
-  tasks:
-    - file: 
-        path: /var/www/html/DVWA/hackable/uploads
-        mode: 0777 
-        recurse: yes
-    - file:
-        path: /var/www/html/DVWA/external/phpids/0.6/lib/IDS/tmp
-        mode: 0777 
-        recurse: yes
-    - file: 
-        path: /var/www/html/DVWA/config
-        mode: 0777 
-        recurse: yes
+    - name: Añadir repositorio de Grafana
+      apt_key:
+        url: https://packages.grafana.com/gpg.key
+        state: present
+      become: true
 
+    - name: Añadir fuente de APT para Grafana
+      apt_repository:
+        repo: 'deb https://packages.grafana.com/oss/deb stable main'
+        state: present
 
-  # Procedemos a configurar la base de datos:
-- name: Creamos y configuramos la bbdd via templates
-  hosts: all
-  become: true
-  tasks:
-    - template:
-        src: templates/config_db.sql
-        dest: /tmp/config_db.sql
-    - template:
-        src: templates/my.cnf
-        dest: /root/.my.cnf
-    - mysql_db:
-        name: dvwa
-        state: import
-        target: /tmp/config_db.sql
-        login_unix_socket: /var/run/mysqld/mysqld.sock
-    - service:
-        name: mysql
-        state: restarted
-    - file: 
-        path: /root/.my.cnf
-        state: absent
+    - name: Instalar Grafana
+      apt:
+        name: grafana
+        state: present
+        update_cache: yes
 
-  # Procedemos a configurar via templates los ficheros de configuracion iniciales:
+    - name: Iniciar y habilitar servicios
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - nginx
+        - grafana-server
 
-- name: Configuramos via template el dvwa - fichero web
-  hosts: all
-  become: true
-  vars:
-    mysql_root_password: dvwa
-    mysql_dvwa_password: dvwa
-    dvwa_db_username: dvwa
-    dvwa_db_password: dvwa
-  tasks:
-    - template:
-        src: templates/config.inc.php.template
-        dest: /var/www/html/DVWA/config/config.inc.php
-    - template:
-        src: templates/.htaccess.template
-        dest: /var/www/html/DVWA/.htaccess
-    - template:
-        src: templates/000-default.conf.template
-        dest: /etc/apache2/sites-available/000-default.conf
-    - template:
-        src: templates/config.inc.php.template
-        dest: /var/www/html/DVWA/config/config.inc.php
-    - service:
-        name: apache2
-        state: restarted
-
-      
       
