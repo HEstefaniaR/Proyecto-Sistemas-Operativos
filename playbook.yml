@@ -1,13 +1,13 @@
----
 - name: Instalar y configurar nginx, Grafana y Prometheus
   hosts: localhost
   become: yes
+  connection: local
 
   tasks:
     - name: Actualizar paquetes
       apt:
         update_cache: yes
-        
+
     - name: Instalar dependencias
       apt:
         name:
@@ -15,7 +15,7 @@
           - software-properties-common
         state: present
 
-    - name: Install nginx
+    - name: Instalar nginx
       apt:
         name: nginx
         state: latest
@@ -24,11 +24,6 @@
     - name: Instalar Prometheus
       apt:
         name: prometheus
-        state: present
-
-    - name: Instalar Grafana
-      apt:
-        name: grafana
         state: present
 
     - name: Iniciar y habilitar nginx
@@ -43,38 +38,62 @@
         state: started
         enabled: yes
 
+    - name: Añadir la clave GPG oficial de Grafana
+      ansible.builtin.apt_key:
+        url: https://packages.grafana.com/gpg.key
+        state: present
+
+    - name: Añadir el repositorio oficial de Grafana
+      ansible.builtin.apt_repository:
+        repo: "deb https://packages.grafana.com/oss/deb stable main"
+        state: present
+        filename: grafana
+
+    - name: Actualizar la cache de paquetes
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Instalar Grafana
+      apt:
+        name: grafana
+        state: present
+
     - name: Iniciar y habilitar Grafana
       systemd:
         name: grafana-server
         state: started
         enabled: yes
 
-    - name: Eliminar configuracion por defecto nginx
+    - name: Eliminar configuración por defecto de nginx
       file:
         path: /etc/nginx/sites-enabled/default
         state: absent
 
-    - name: Agregar configuracion nginx
+    - name: Agregar configuración nginx
       copy:
         src: provisioning/static-site-config
         dest: /etc/nginx/sites-available/
-        owner: "{{ user }}"
+        owner: root
         group: root
         mode: '0644'
 
-    - name: Habilitar configuracion de nginx
+    - name: Habilitar configuración de nginx
       file:
         src: /etc/nginx/sites-available/static-site-config
         dest: /etc/nginx/sites-enabled/static-site-config
         state: link
+
+    - name: Asegurar que UFW esté habilitado
+      ufw:
+        state: enabled
 
     - name: Configurar firewall para Grafana y Prometheus
       ufw:
         rule: allow
         port: "{{ item }}"
       loop:
-        - 3000  
-        - 9090  
+        - 3000
+        - 9090
 
     - name: Reiniciar servicios para aplicar configuración
       systemd:
@@ -85,11 +104,21 @@
         - prometheus
         - grafana-server
 
-        - name: Descargar nginx-prometheus-exporter
+    - name: Descargar nginx-prometheus-exporter
       get_url:
-        url: https://github.com/nginxinc/nginx-prometheus-exporter/releases/download/v1.1.0/nginx-prometheus-exporter_1.1.0_linux_amd64
-        dest: /usr/local/bin/nginx-prometheus-exporter
-        mode: '0755'
+        url: https://github.com/nginx/nginx-prometheus-exporter/releases/download/v1.4.2/nginx-prometheus-exporter_1.4.2_linux_amd64.tar.gz
+        dest: /tmp/nginx-prometheus-exporter.tar.gz
+
+    - name: Extraer nginx-prometheus-exporter
+      unarchive:
+        src: /tmp/nginx-prometheus-exporter.tar.gz
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Mover ejecutable nginx-prometheus-exporter a /usr/local/bin
+      command: mv /tmp/nginx-prometheus-exporter /usr/local/bin/nginx-prometheus-exporter
+      args:
+        removes: /tmp/nginx-prometheus-exporter
 
     - name: Crear servicio systemd para nginx-prometheus-exporter
       copy:
@@ -100,7 +129,7 @@
           After=network.target
 
           [Service]
-          ExecStart=/usr/local/bin/nginx-prometheus-exporter -nginx.scrape-uri http://127.0.0.1/nginx_status
+          ExecStart=/usr/local/bin/nginx-prometheus-exporter --nginx.scrape-uri=http://127.0.0.1/nginx_status
           Restart=always
 
           [Install]
@@ -110,9 +139,9 @@
       systemd:
         name: nginx-exporter.service
         enabled: yes
-        state: started
         daemon_reload: yes
-    
+        state: started
+
     - name: Configurar Prometheus con job para nginx-exporter
       copy:
         src: provisioning/prometheus.yml
@@ -120,16 +149,8 @@
         owner: prometheus
         group: prometheus
         mode: '0644'
-        
+
     - name: Reiniciar Prometheus para cargar nueva configuración
       systemd:
         name: prometheus
         state: restarted
-
-
-
-    
-
-
-
-
