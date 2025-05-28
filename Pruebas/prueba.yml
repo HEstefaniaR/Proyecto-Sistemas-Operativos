@@ -1,0 +1,13 @@
+---
+- name: Obtener versión del kernel
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    
+
+    - name: Mostrar versión del kernel
+      debug:
+        msg: "La versión del kernel es {{ ansible_kernel }}"
+      when: ansible_kernel is defined
+    
