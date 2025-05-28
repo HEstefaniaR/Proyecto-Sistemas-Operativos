@@ -64,25 +64,6 @@
         state: started
         enabled: yes
 
-    - name: Eliminar configuración por defecto de nginx
-      file:
-        path: /etc/nginx/sites-enabled/default
-        state: absent
-
-    - name: Agregar configuración nginx
-      copy:
-        src: provisioning/static-site-config
-        dest: /etc/nginx/sites-available/
-        owner: root
-        group: root
-        mode: '0644'
-
-    - name: Habilitar configuración de nginx
-      file:
-        src: /etc/nginx/sites-available/static-site-config
-        dest: /etc/nginx/sites-enabled/static-site-config
-        state: link
-
     - name: Asegurar que UFW esté habilitado
       ufw:
         state: enabled
@@ -94,6 +75,7 @@
       loop:
         - 3000
         - 9090
+        - 80
 
     - name: Reiniciar servicios para aplicar configuración
       systemd:
