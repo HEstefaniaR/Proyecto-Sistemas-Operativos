@@ -64,18 +64,53 @@
         state: started
         enabled: yes
 
+    - name: Configurar archivo de default para nginx
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root /var/www/html;
+              index index.html index.htm;
+
+              server_name _;
+
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              location /nginx_status {
+                  stub_status;
+                  allow 127.0.0.1;
+                  deny all;
+              }
+          }
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Crear página de inicio simple
+      copy:
+        dest: /var/www/html/index.html
+        content: "<h1>Servidor NGINX funcionando</h1>"
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
     - name: Asegurar que UFW esté habilitado
       ufw:
         state: enabled
 
-    - name: Configurar firewall para Grafana y Prometheus
+    - name: Configurar firewall para Grafana, Prometheus y NGINX
       ufw:
         rule: allow
         port: "{{ item }}"
       loop:
+        - 80
         - 3000
         - 9090
-        - 80
 
     - name: Reiniciar servicios para aplicar configuración
       systemd:
@@ -136,3 +171,23 @@
       systemd:
         name: prometheus
         state: restarted
+    
+    - name: Verificar estado del servicio nginx-exporter
+      systemd:
+        name: nginx-exporter.service
+      register: exporter_status
+
+    - name: Mostrar estado del servicio nginx-exporter
+      debug:
+        msg: "nginx-exporter está activo: {{ exporter_status.status.ActiveState == 'active' }}"
+
+    - name: Verificar que nginx-exporter responde en el puerto por defecto (9113)
+      uri:
+        url: http://localhost:9113/metrics
+        return_content: yes
+      register: exporter_response
+      failed_when: "'nginx_connections_active' not in exporter_response.content"
+
+    - name: Mostrar confirmación de que nginx-exporter devuelve métricas
+      debug:
+        msg: "nginx-exporter está funcionando y devuelve métricas correctamente."
